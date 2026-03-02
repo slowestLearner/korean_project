@@ -1,0 +1,35 @@
+# Python virtual environment
+.venv/
+venv/
+# Byte-code files
+*.pyc
+__pycache__/
+
+# OS generated files
+.DS_Store # macOS
+Thumbs.db # Windows
+
+# log files
+*.log
+
+# J's sandbox
+j_sandbox/**
+!j_sandbox/**/ 
+!j_sandbox/**/*.py
+!j_sandbox/**/*.R
+!j_sandbox/**/*.Rmd
+
+
+# ========================
+# Ignore Cloud Sync Conflict Files
+# ========================
+
+# Ignore conflicted copies from Dropbox, OneDrive, etc.
+# Matches files like:
+#   - my_file (Selective Sync Conflict).txt
+#   - my_file (FNZ230's conflicted copy 2025-08-09).py
+*(*conflicted copy*).*
+*(*Selective Sync Conflict*).*
+
+# Ignore local environment-specific configurations
+.env
