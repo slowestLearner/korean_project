@@ -90,6 +90,9 @@ for this_ym in yms:
 
 # # ---- example: reading data
 
-# from_dir = DATA_DIR / 'data/prices/daily_compustat/'
-# data = pl.scan_parquet(from_dir)
-# data.head().collect()
+from_dir = DATA_DIR / 'data/prices/daily_compustat/'
+
+data = pl.scan_parquet(from_dir).filter(pl.col("yyyymm").is_in([202401, 202402]))
+data = data.collect()
+
+

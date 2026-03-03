@@ -2,9 +2,11 @@
 
 
 ## SET UP
-source .venv/bin/activate
+- python version: 3.13.5
+- source .venv/bin/activate
 
-## Data (scratch folder)
+
+## Data (scratch folder, for J it is /scratch/general/vast/u6025801/)
 
 - `data/`
     - `prices/`
