@@ -1,0 +1,9 @@
+{
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "astral.sh.ruff"
+    },
+    "ruff.enable": true,
+    "python.formatting.provider": "none",
+    "ruff.format.enable": true
+}

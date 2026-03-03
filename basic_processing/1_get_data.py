@@ -22,22 +22,17 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, module="multiprocessing.resource_tracker"
 )
 
+# load directories
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv()
-DATA_DIR = os.getenv("DATA_DIR")
-CODE_DIR = os.getenv("CODE_DIR")
+DATA_DIR = Path(os.getenv("DATA_DIR"))
+CODE_DIR = Path(os.getenv("CODE_DIR"))
 
 # %% connect to WRDS. https://wrds-www.wharton.upenn.edu/documents/1443/wrds_connection.html
-conn = wrds.Connection(wrds_username="jiacui2")
 
-# %%
-# ===================================================================
-#                          Some basic downloads
-# ===================================================================
-
-# ---------------------------------------------------
-# Download daily returns from Compustat global
-# ---------------------------------------------------
+# conn.list_libraries()
+# cc = conn.list_tables(library='comp_global_daily')
+# [x for x in cc if 'g_secd' in x]
 
 
 # %%
@@ -45,74 +40,56 @@ conn = wrds.Connection(wrds_username="jiacui2")
 #                    daily stock data and save in monthly partitions
 # ===================================================================
 
-# Use monthly data to filter down to common stocks
-data_monthly = pl.read_parquet(
-    f"{BASE_DIR}/../../input_data/stocks/prices/monthly/returns.parquet"
-)
-data_monthly = (
-    data_monthly.with_columns(pl.col("date").dt.year().alias("yyyy"))
-    .select(["yyyy", "permno"])
-    .unique()
-    .filter(pl.col("yyyy") >= 1980)
+conn = wrds.Connection()
+
+# get all korean stocks in a year
+tt = time.time()
+this_year = 2024
+query = f"""SELECT datadate, 
+                    gvkey, 
+                    iid, 
+                    isin, 
+                    conm, 
+                    curcdd, 
+                    ajexdi, 
+                    cshoc, 
+                    cshtrd, 
+                    prcld, 
+                    prchd, 
+                    prccd, 
+                    divd, 
+                    gind 
+                FROM comp_global_daily.g_secd 
+                WHERE fic = 'KOR' 
+                AND datadate BETWEEN '{this_year}-01-01' and '{this_year}-12-31'"""
+data = conn.raw_sql(query)
+data = pl.from_pandas(data)
+tt = time.time() - tt
+print(f"Time to get all korean stocks: {tt:.2f} seconds")
+
+# some basic formatting
+data = data.with_columns(
+    (pl.col("datadate").str.to_date("%Y-%m-%d").alias("datadate"))
 )
 
+# yyyymm
+data = data.with_columns(
+    (pl.col("datadate").dt.strftime("%Y%m").cast(pl.Int32).alias("yyyymm"))
+)
 
-to_dir = Path(f"{BASE_DIR}/../../input_data/stocks/prices/daily/")
+# save by month
+yms = sorted(data.select('yyyymm').unique().to_series().to_list())
+
+to_dir = DATA_DIR / 'data/prices/daily_compustat/'
 to_dir.mkdir(parents=True, exist_ok=True)
-
-# loop through years
-for this_year in range(1980, 2025):
-    print(this_year)
-
-    # why is reading so slow?
-    tt = time.time()
-
-    query = f"""SELECT date, permno, openprc, prc, bidlo, askhi, vol, shrout, ret, cfacpr, cfacshr
-    FROM crsp.dsf WHERE date BETWEEN '{this_year}-01-01' and '{this_year}-12-31'"""
-
-    data = conn.raw_sql(query)
-    data = pl.from_pandas(data).lazy()
-
-    # get right formats (sometimes openprc is empty)
-    data = data.with_columns(
-        [pl.col("openprc").cast(pl.Float64), pl.col("date").cast(pl.Date)]
-    )
-
-    # prcs need to be positive
-    data = data.with_columns(
-        [pl.col("openprc").abs().alias("openprc"), pl.col("prc").abs().alias("prc")]
-    ).sort(["date", "permno"])
-
-    # get subset of common stocks
-    permnos_this_year = (
-        data_monthly.filter(pl.col("yyyy") == this_year).get_column("permno").to_list()
-    )
-    data = data.filter(pl.col("permno").is_in(permnos_this_year))
-
-    # important: if a stock has any data in this year, make sure it has full data for all dates
-    # there is no need to fill any data forward, because if a date has missing ret, we will not use it
-    all_permnos = data.select(pl.col("permno").unique())
-    all_dates = data.select(pl.col("date").unique().sort())
-    grid = all_permnos.join(all_dates, how="cross")
-    data = grid.join(data, on=["permno", "date"], how="left")
-    del grid
-    data = data.sort(["permno", "date"])
-
-    # write to monthly partitions
-    data = data.with_columns(
-        (pl.col("date").dt.strftime("%Y%m").cast(pl.Int32).alias("yyyymm"))
-    )
-    data = data.collect()
-
-    for (yyyymm,), group in data.group_by("yyyymm"):
-        out_dir = f"{to_dir}/yyyymm={yyyymm}"
-        os.makedirs(out_dir, exist_ok=True)
-        group.write_parquet(f"{out_dir}/part.parquet", compression="snappy")
-
-    # Calculate the elapsed time
-    tt = time.time() - tt
-
-    # Print the time it took for this step
-    print(f"Time to process year {this_year}: {tt:.2f} seconds")
+for this_ym in yms:
+    out_dir = f"{to_dir}/yyyymm={this_ym}"
+    os.makedirs(out_dir, exist_ok=True)
+    data.filter(pl.col("yyyymm") == this_ym).drop('yyyymm').write_parquet(f"{out_dir}/part.parquet", compression="snappy")
 
 
+# # ---- example: reading data
+
+# from_dir = DATA_DIR / 'data/prices/daily_compustat/'
+# data = pl.scan_parquet(from_dir)
+# data.head().collect()
